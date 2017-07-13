@@ -1,0 +1,138 @@
+---
+title: "Practical Machine Learning Week Assignment: Prediction Assignment"
+author: "Jørgen Quaade"
+date: "13 jul 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This assignment calls for analysis of a Weight Lifting Exercise dataset. See credit at the end of the report.The instructions read as follows:
+
+"One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases."
+
+## Executive Summary
+
+
+
+## Setup, Data Loading, Cleaning and Exploration
+
+### Setup
+
+First the needed packages are loaded.
+
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(randomForest))
+suppressMessages(library(e1071))
+suppressMessages(library(rpart))
+suppressMessages(library(rpart.plot))
+```
+
+Next we want to set a seed for reproduceability.
+
+```{r}
+set.seed(1234)
+```
+
+### Loading the data
+
+After downloading and visually inspecting the data it is clear that there are a number of missing data. They occur as DIV//=! errors and "NA" and just "" which will be converted to proper NA's when loading. We will be working off a local copy of the data to ensure reproducability. The local copy will be available in the git repo.
+
+```{r}
+WLEdata <- read.csv("pml-training.csv", na.strings=c("", "NA", "#DIV/0!", row.names = 1))
+WLEtestSubm <- read.csv("pml-testing.csv", na.strings=c("", "NA", "#DIV/0!", row.names = 1))
+```
+
+The variable we are most interested in is the classe variable describing just how well the exercises are performed. The classe variable takes on the following values:
+
+Class A: exactly according to the specification
+Class B: throwing the elbows to the front
+Class C: lifting the dumbbell only halfway
+Class D: lowering the dumbbell only halfway
+Class E: throwing the hips to the front
+
+The distribution of classe variable can be seen from the summary and plot below.
+
+```{r}
+summary(WLEdata$classe)
+plot(WLEdata$classe)
+```
+
+As can be seen data is relatively evenly distributed.
+
+### Cleaning
+
+Irrelevant columns are user_name, raw_timestamp_part_1, raw_timestamp_part_1, cvtd_timestamp, new_window, and num_window in columns 1-7 as they are metadata.
+
+```{r}
+cleanWLEdata<-WLEdata[,-c(1:7)]
+cleanWLEdata<-cleanWLEdata[,colSums(is.na(cleanWLEdata))==0]
+dim(cleanWLEdata)
+
+cleanWLEtestSubm<-WLEtestSubm[,-c(1:7)]
+cleanWLEtestSubm<-cleanWLEtestSubm[,colSums(is.na(cleanWLEtestSubm))==0]
+dim(cleanWLEtestSubm)
+```
+
+We'll partition the training dataset into a training set and a test set to enable later validation of the model found using the training set. We will use a 60/40 split based on the classe variable.
+
+```{r}
+idx<-createDataPartition(y=cleanWLEdata$classe, p=0.6, list=FALSE)
+
+WLEtrain<-cleanWLEdata[idx,]
+WLEtest<-cleanWLEdata[-idx,]
+dim(WLEtrain)
+dim(WLEtest)
+```
+
+## Building the Models
+
+We are going to try with 2 models based on Decision Trees and Random Forest as these prediction methods lends themselves well to this dataset.
+
+```{r}
+treefit<- rpart(classe ~ ., data=WLEtrain, method = "class")
+treepred<- predict(treefit, WLEtest, type="class")
+confusionMatrix(treepred,WLEtest$classe)
+```
+
+As can be seen from the matrix the decision tree model have a prediction accuracy of 0.7392, and consequently an error rate of 0.2608. 
+
+
+```{r}
+forestfit<- randomForest(classe ~ ., data=WLEtrain, method = "class")
+forestpred<- predict(forestfit, WLEtest, type="class")
+confusionMatrix(forestpred,WLEtest$classe)
+```
+
+As can be seen from the matrix, the randomforest model does a lot better, achieving a 0.9058 accuracy. The error rate then corresponds to around 0.0942.
+
+To be sure that this is about as accurate we can get with the dataset, let's try with svm and lda models:
+
+```{r}
+model_svm<- svm(classe ~. , data=WLEtrain)
+mean(predict(model_svm, WLEtrain) == WLEtrain$classe)
+model_lda<- train(classe ~., data=WLEtrain, method = "lda")
+mean(predict(model_lda, WLEtrain) == WLEtrain$classe)
+```
+
+As can be seen both means are well below what we achieve with Random Forests.
+
+## Model Prediction for submission
+
+Using the Random Forest model on the 20 test cases we can generate answer to the submission:
+
+subpred<-predict(forestfit, cleanWLEtestSubm, type="class")
+
+
+## Credits
+
+The WLE data set was produced by the below authors and is described in the below reference.
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
